@@ -1,0 +1,39 @@
+# go-eva Configuration
+# Default configuration for production
+
+server:
+  port: 9000
+  read_timeout: 10s
+  write_timeout: 10s
+  graceful_timeout: 5s
+
+audio:
+  # Polling frequency (Hz)
+  poll_hz: 20
+  
+  # Speaking latch duration (ms) - holds speaking flag after VAD ends
+  speaking_latch_ms: 500
+  
+  # EMA smoothing factor (0-1, higher = more responsive)
+  ema_alpha: 0.3
+  
+  # History buffer size for stability calculations
+  history_size: 100
+  
+  # USB reconnection delay
+  usb_reconnect_delay: 1s
+  
+  confidence:
+    # Base confidence when not speaking
+    base: 0.3
+    # Added when speaking
+    speaking_bonus: 0.4
+    # Added when angle is stable
+    stability_bonus: 0.2
+
+logging:
+  # Log level: debug, info, warn, error
+  level: info
+  # Log format: json, text
+  format: json
+

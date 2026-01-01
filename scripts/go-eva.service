@@ -1,5 +1,5 @@
 [Unit]
-Description=go-eva Shadow Daemon
+Description=go-eva Audio Spatial Awareness Daemon
 Documentation=https://github.com/teslashibe/go-eva
 After=network.target reachy-mini-daemon.service
 Wants=reachy-mini-daemon.service
@@ -8,18 +8,25 @@ Wants=reachy-mini-daemon.service
 Type=simple
 User=root
 Group=root
-ExecStart=/home/pollen/go-eva -port 9000
+ExecStart=/usr/local/bin/go-eva -config /etc/go-eva/config.yaml
 Restart=always
 RestartSec=5
+WatchdogSec=30
+
+# Logging to journald
 StandardOutput=journal
 StandardError=journal
+SyslogIdentifier=go-eva
 
 # Give time for USB device to initialize
 ExecStartPre=/bin/sleep 2
 
 # Environment
-Environment=HOME=/home/pollen
+Environment=HOME=/root
+
+# Resource limits
+MemoryMax=64M
+CPUQuota=15%
 
 [Install]
 WantedBy=multi-user.target
-
