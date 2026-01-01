@@ -1,0 +1,25 @@
+[Unit]
+Description=go-eva Shadow Daemon
+Documentation=https://github.com/teslashibe/go-eva
+After=network.target reachy-mini-daemon.service
+Wants=reachy-mini-daemon.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/home/pollen/go-eva -port 9000
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Give time for USB device to initialize
+ExecStartPre=/bin/sleep 2
+
+# Environment
+Environment=HOME=/home/pollen
+
+[Install]
+WantedBy=multi-user.target
+
