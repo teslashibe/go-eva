@@ -1,6 +1,6 @@
 module github.com/teslashibe/go-eva
 
-go 1.22
+go 1.25
 
 require (
 	github.com/gofiber/contrib/websocket v1.3.2
