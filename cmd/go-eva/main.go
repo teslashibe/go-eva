@@ -176,7 +176,7 @@ func main() {
 			logger.Error("cloud connection failed", "error", err)
 		}
 
-		// Forward DOA updates to cloud
+		// Forward DOA updates to cloud (with enhanced 3D positioning data)
 		go func() {
 			ticker := time.NewTicker(50 * time.Millisecond) // 20 Hz DOA updates
 			defer ticker.Stop()
@@ -188,12 +188,16 @@ func main() {
 				case <-ticker.C:
 					if cloudClient.IsConnected() {
 						reading := tracker.GetLatest()
-						cloudClient.SendDOA(
+						cloudClient.SendEnhancedDOA(
 							reading.Angle,
 							reading.SmoothedAngle,
 							reading.Speaking,
 							reading.SpeakingLatched,
 							reading.Confidence,
+							reading.EstX,
+							reading.EstY,
+							reading.TotalEnergy,
+							reading.SpeechEnergy,
 						)
 					}
 				}
