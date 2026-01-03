@@ -6,6 +6,7 @@ require (
 	github.com/gofiber/contrib/websocket v1.3.2
 	github.com/gofiber/fiber/v2 v2.52.5
 	github.com/google/gousb v1.1.3
+	github.com/gorilla/websocket v1.5.3
 	github.com/spf13/viper v1.19.0
 )
 
