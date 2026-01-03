@@ -42,9 +42,9 @@ type HeadTarget struct {
 
 // FullBodyTarget is the format expected by Pollen API
 type FullBodyTarget struct {
-	TargetHeadPose  HeadTarget `json:"target_head_pose"`
-	TargetAntennas  [2]float64 `json:"target_antennas"`
-	TargetBodyYaw   float64    `json:"target_body_yaw"`
+	TargetHeadPose HeadTarget `json:"target_head_pose"`
+	TargetAntennas [2]float64 `json:"target_antennas"`
+	TargetBodyYaw  float64    `json:"target_body_yaw"`
 }
 
 // EmotionRequest is the format for playing emotions
@@ -65,10 +65,10 @@ type Client struct {
 	minInterval   time.Duration
 
 	// Stats
-	commandsSent   atomic.Uint64
-	commandErrors  atomic.Uint64
-	emotionsSent   atomic.Uint64
-	emotionErrors  atomic.Uint64
+	commandsSent  atomic.Uint64
+	commandErrors atomic.Uint64
+	emotionsSent  atomic.Uint64
+	emotionErrors atomic.Uint64
 }
 
 // NewClient creates a new Pollen client
@@ -254,4 +254,3 @@ func (c *Client) IsHealthy(ctx context.Context) bool {
 	_, err := c.GetStatus(ctx)
 	return err == nil
 }
-
