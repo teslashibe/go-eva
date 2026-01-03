@@ -98,7 +98,7 @@ func Default() *Config {
 			},
 		},
 		Cloud: CloudConfig{
-			Enabled:          false, // Disabled by default
+			Enabled:          true, // Enabled by default
 			URL:              "ws://localhost:8888/ws/robot",
 			ReconnectBackoff: 1 * time.Second,
 			MaxBackoff:       30 * time.Second,
@@ -110,7 +110,7 @@ func Default() *Config {
 			RateLimitHz: 30,
 		},
 		Camera: CameraConfig{
-			Enabled:   false, // Disabled by default
+			Enabled:   true, // Enabled by default
 			Framerate: 10,
 			Width:     640,
 			Height:    480,
@@ -177,7 +177,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("audio.confidence.stability_bonus", 0.2)
 
 	// Cloud defaults
-	v.SetDefault("cloud.enabled", false)
+	v.SetDefault("cloud.enabled", true)
 	v.SetDefault("cloud.url", "ws://localhost:8888/ws/robot")
 	v.SetDefault("cloud.reconnect_backoff", "1s")
 	v.SetDefault("cloud.max_backoff", "30s")
@@ -189,7 +189,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("pollen.rate_limit_hz", 30)
 
 	// Camera defaults
-	v.SetDefault("camera.enabled", false)
+	v.SetDefault("camera.enabled", true)
 	v.SetDefault("camera.framerate", 10)
 	v.SetDefault("camera.width", 640)
 	v.SetDefault("camera.height", 480)
