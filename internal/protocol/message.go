@@ -202,4 +202,3 @@ func (m *Message) GetConfigUpdate() (*ConfigUpdate, error) {
 	}
 	return &data, nil
 }
-

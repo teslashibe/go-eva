@@ -13,7 +13,35 @@ import (
 type Config struct {
 	Server  ServerConfig  `mapstructure:"server"`
 	Audio   AudioConfig   `mapstructure:"audio"`
+	Cloud   CloudConfig   `mapstructure:"cloud"`
+	Pollen  PollenConfig  `mapstructure:"pollen"`
+	Camera  CameraConfig  `mapstructure:"camera"`
 	Logging LoggingConfig `mapstructure:"logging"`
+}
+
+// CloudConfig configures connection to go-reachy cloud
+type CloudConfig struct {
+	Enabled          bool          `mapstructure:"enabled"`
+	URL              string        `mapstructure:"url"`
+	ReconnectBackoff time.Duration `mapstructure:"reconnect_backoff"`
+	MaxBackoff       time.Duration `mapstructure:"max_backoff"`
+	PingInterval     time.Duration `mapstructure:"ping_interval"`
+}
+
+// PollenConfig configures connection to Pollen daemon
+type PollenConfig struct {
+	BaseURL     string        `mapstructure:"base_url"`
+	Timeout     time.Duration `mapstructure:"timeout"`
+	RateLimitHz int           `mapstructure:"rate_limit_hz"`
+}
+
+// CameraConfig configures camera capture
+type CameraConfig struct {
+	Enabled   bool `mapstructure:"enabled"`
+	Framerate int  `mapstructure:"framerate"`
+	Width     int  `mapstructure:"width"`
+	Height    int  `mapstructure:"height"`
+	Quality   int  `mapstructure:"quality"`
 }
 
 // ServerConfig configures the HTTP server
@@ -68,6 +96,25 @@ func Default() *Config {
 				SpeakingBonus:  0.4,
 				StabilityBonus: 0.2,
 			},
+		},
+		Cloud: CloudConfig{
+			Enabled:          false, // Disabled by default
+			URL:              "ws://localhost:8888/ws/robot",
+			ReconnectBackoff: 1 * time.Second,
+			MaxBackoff:       30 * time.Second,
+			PingInterval:     10 * time.Second,
+		},
+		Pollen: PollenConfig{
+			BaseURL:     "http://localhost:8000",
+			Timeout:     2 * time.Second,
+			RateLimitHz: 30,
+		},
+		Camera: CameraConfig{
+			Enabled:   false, // Disabled by default
+			Framerate: 10,
+			Width:     640,
+			Height:    480,
+			Quality:   80,
 		},
 		Logging: LoggingConfig{
 			Level:  "info",
@@ -129,6 +176,25 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("audio.confidence.speaking_bonus", 0.4)
 	v.SetDefault("audio.confidence.stability_bonus", 0.2)
 
+	// Cloud defaults
+	v.SetDefault("cloud.enabled", false)
+	v.SetDefault("cloud.url", "ws://localhost:8888/ws/robot")
+	v.SetDefault("cloud.reconnect_backoff", "1s")
+	v.SetDefault("cloud.max_backoff", "30s")
+	v.SetDefault("cloud.ping_interval", "10s")
+
+	// Pollen defaults
+	v.SetDefault("pollen.base_url", "http://localhost:8000")
+	v.SetDefault("pollen.timeout", "2s")
+	v.SetDefault("pollen.rate_limit_hz", 30)
+
+	// Camera defaults
+	v.SetDefault("camera.enabled", false)
+	v.SetDefault("camera.framerate", 10)
+	v.SetDefault("camera.width", 640)
+	v.SetDefault("camera.height", 480)
+	v.SetDefault("camera.quality", 80)
+
 	// Logging defaults
 	v.SetDefault("logging.level", "info")
 	v.SetDefault("logging.format", "json")
@@ -146,6 +212,14 @@ func (c *Config) Validate() error {
 
 	if c.Audio.EMAAlpha < 0 || c.Audio.EMAAlpha > 1 {
 		return fmt.Errorf("ema_alpha must be between 0 and 1, got %f", c.Audio.EMAAlpha)
+	}
+
+	if c.Cloud.Enabled && c.Cloud.URL == "" {
+		return fmt.Errorf("cloud.url is required when cloud is enabled")
+	}
+
+	if c.Camera.Enabled && (c.Camera.Framerate < 1 || c.Camera.Framerate > 60) {
+		return fmt.Errorf("camera.framerate must be between 1 and 60, got %d", c.Camera.Framerate)
 	}
 
 	return nil

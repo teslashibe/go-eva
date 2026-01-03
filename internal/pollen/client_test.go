@@ -264,4 +264,3 @@ func TestIsHealthyFalse(t *testing.T) {
 		t.Error("IsHealthy should return false when daemon is unreachable")
 	}
 }
-
