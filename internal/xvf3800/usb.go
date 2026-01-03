@@ -21,9 +21,19 @@ const (
 )
 
 // XVF3800 control parameters
+// Resource IDs and Command IDs from XMOS XVF3800 documentation
+// See: https://www.xmos.com/documentation/XM-014888-PC/html/modules/fwk_xvf/doc/user_guide/AA_control_command_appendix.html
 const (
-	doaResID = 20
-	doaCmdID = 19
+	// GPO_SERVICER_RESID commands (resid=20)
+	gpoResID      = 20
+	doaCmdID      = 19 // DOA_VALUE_RADIANS: angle + speech flag
+	doaValueCmdID = 18 // DOA_VALUE: raw uint32 values
+
+	// AEC_RESID commands (resid=33)
+	aecResID            = 33
+	aecAzimuthCmdID     = 75 // AEC_AZIMUTH_VALUES: 4 floats (radians)
+	aecSpEnergyCmdID    = 80 // AEC_SPENERGY_VALUES: 4 floats (speech energy per mic)
+	aecMicArrayGeoCmdID = 74 // AEC_MIC_ARRAY_GEO: 12 floats (x,y,z for each mic)
 )
 
 // USBSource provides direct USB access to the XVF3800 audio DSP
@@ -150,7 +160,7 @@ func (u *USBSource) GetDOA(ctx context.Context) (doa.Reading, error) {
 		gousb.ControlIn|gousb.ControlVendor|gousb.ControlDevice,
 		0,             // bRequest
 		0x80|doaCmdID, // wValue (read flag | cmdid)
-		doaResID,      // wIndex (resid)
+		gpoResID,      // wIndex (resid)
 		data,          // data buffer
 	)
 
@@ -183,13 +193,66 @@ func (u *USBSource) GetDOA(ctx context.Context) (doa.Reading, error) {
 
 	latency := time.Since(start)
 
+	// Read enhanced data (speech energy and per-mic azimuths)
+	energyValues, azimuthValues := u.readEnhancedData()
+
 	return doa.Reading{
-		Angle:     doa.ToEvaAngle(rawAngle),
-		RawAngle:  rawAngle,
-		Speaking:  speaking,
-		Timestamp: time.Now(),
-		LatencyMs: latency.Milliseconds(),
+		Angle:        doa.ToEvaAngle(rawAngle),
+		RawAngle:     rawAngle,
+		Speaking:     speaking,
+		Timestamp:    time.Now(),
+		LatencyMs:    latency.Milliseconds(),
+		SpeechEnergy: energyValues,
+		MicAzimuths:  azimuthValues,
+		TotalEnergy:  sumEnergy(energyValues),
 	}, nil
+}
+
+// readEnhancedData reads additional XVF3800 parameters for speech energy and per-mic azimuths.
+// These are optional - errors are logged but don't fail the main DOA read.
+func (u *USBSource) readEnhancedData() (energy [4]float64, azimuths [4]float64) {
+	// Read AEC_SPENERGY_VALUES (4 floats)
+	energyData := make([]byte, 17) // 1 status + 4 floats
+	n, err := u.dev.Control(
+		gousb.ControlIn|gousb.ControlVendor|gousb.ControlDevice,
+		0,
+		0x80|aecSpEnergyCmdID,
+		aecResID,
+		energyData,
+	)
+	if err == nil && n >= 17 && energyData[0] == 0 {
+		for i := 0; i < 4; i++ {
+			bits := binary.LittleEndian.Uint32(energyData[1+i*4 : 5+i*4])
+			energy[i] = float64(math.Float32frombits(bits))
+		}
+	}
+
+	// Read AEC_AZIMUTH_VALUES (4 floats in radians)
+	azimuthData := make([]byte, 17) // 1 status + 4 floats
+	n, err = u.dev.Control(
+		gousb.ControlIn|gousb.ControlVendor|gousb.ControlDevice,
+		0,
+		0x80|aecAzimuthCmdID,
+		aecResID,
+		azimuthData,
+	)
+	if err == nil && n >= 17 && azimuthData[0] == 0 {
+		for i := 0; i < 4; i++ {
+			bits := binary.LittleEndian.Uint32(azimuthData[1+i*4 : 5+i*4])
+			azimuths[i] = float64(math.Float32frombits(bits))
+		}
+	}
+
+	return energy, azimuths
+}
+
+// sumEnergy calculates total speech energy across all mics
+func sumEnergy(energy [4]float64) float64 {
+	var total float64
+	for _, e := range energy {
+		total += e
+	}
+	return total
 }
 
 func (u *USBSource) recordError(err error) {

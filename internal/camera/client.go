@@ -1,15 +1,10 @@
-// Package camera provides camera access via Pollen's HTTP API
+// Package camera provides WebRTC video capture from Reachy Mini
 package camera
 
 import (
-	"bytes"
 	"context"
-	"fmt"
-	"image"
-	"image/jpeg"
-	"io"
 	"log/slog"
-	"net/http"
+	"net/url"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -18,11 +13,11 @@ import (
 // Config holds camera client configuration
 type Config struct {
 	PollenURL string        // Base URL for Pollen API (e.g., "http://localhost:8000")
-	Framerate int           // Target frames per second
-	Width     int           // Desired width (0 = native)
-	Height    int           // Desired height (0 = native)
+	Framerate int           // Target frames per second (for rate limiting callbacks)
+	Width     int           // Desired width (informational only)
+	Height    int           // Desired height (informational only)
 	Quality   int           // JPEG quality (1-100)
-	Timeout   time.Duration // HTTP request timeout
+	Timeout   time.Duration // Connection timeout
 }
 
 // DefaultConfig returns sensible defaults
@@ -33,7 +28,7 @@ func DefaultConfig() Config {
 		Width:     640,
 		Height:    480,
 		Quality:   80,
-		Timeout:   2 * time.Second,
+		Timeout:   15 * time.Second,
 	}
 }
 
@@ -46,23 +41,24 @@ type Frame struct {
 	FrameID   uint64    // Sequential frame ID
 }
 
-// Client captures frames from Pollen's camera API
+// Client captures frames via WebRTC from Pollen
 type Client struct {
-	cfg        Config
-	logger     *slog.Logger
-	httpClient *http.Client
+	cfg    Config
+	logger *slog.Logger
+
+	webrtc    *WebRTCClient
+	robotIP   string
 
 	mu        sync.RWMutex
 	running   bool
 	cancel    context.CancelFunc
-	frameID   atomic.Uint64
 	lastFrame *Frame
 
 	// Callbacks
 	onFrame func(Frame)
 
 	// Stats
-	framesCaptures atomic.Uint64
+	framesCaptured atomic.Uint64
 	frameErrors    atomic.Uint64
 }
 
@@ -72,12 +68,16 @@ func NewClient(cfg Config, logger *slog.Logger) *Client {
 		logger = slog.Default()
 	}
 
+	// Extract robot IP from Pollen URL
+	robotIP := "localhost"
+	if u, err := url.Parse(cfg.PollenURL); err == nil {
+		robotIP = u.Hostname()
+	}
+
 	return &Client{
-		cfg:    cfg,
-		logger: logger,
-		httpClient: &http.Client{
-			Timeout: cfg.Timeout,
-		},
+		cfg:     cfg,
+		logger:  logger,
+		robotIP: robotIP,
 	}
 }
 
@@ -88,26 +88,95 @@ func (c *Client) OnFrame(callback func(Frame)) {
 	c.mu.Unlock()
 }
 
-// Start begins capturing frames
+// Start begins capturing frames via WebRTC
 func (c *Client) Start(ctx context.Context) error {
 	c.mu.Lock()
 	if c.running {
 		c.mu.Unlock()
 		return nil
 	}
-	c.running = true
 
 	ctx, c.cancel = context.WithCancel(ctx)
 	c.mu.Unlock()
 
-	c.logger.Info("camera client starting",
-		"pollen_url", c.cfg.PollenURL,
+	c.logger.Info("camera client starting (WebRTC)",
+		"robot_ip", c.robotIP,
 		"framerate", c.cfg.Framerate,
-		"resolution", fmt.Sprintf("%dx%d", c.cfg.Width, c.cfg.Height),
 	)
 
-	go c.captureLoop(ctx)
+	// Create WebRTC client
+	c.webrtc = NewWebRTCClient(c.robotIP, c.logger)
+
+	// Set up frame callback
+	c.webrtc.OnFrame(func(frame Frame) {
+		c.framesCaptured.Add(1)
+
+		c.mu.Lock()
+		c.lastFrame = &frame
+		callback := c.onFrame
+		c.mu.Unlock()
+
+		if callback != nil {
+			callback(frame)
+		}
+	})
+
+	// Connect in background (retries on failure)
+	go c.connectLoop(ctx)
+
+	c.mu.Lock()
+	c.running = true
+	c.mu.Unlock()
+
 	return nil
+}
+
+// connectLoop attempts to connect and reconnects on failure
+func (c *Client) connectLoop(ctx context.Context) {
+	backoff := time.Second
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		err := c.webrtc.Connect()
+		if err != nil {
+			c.frameErrors.Add(1)
+			c.logger.Warn("WebRTC connection failed", "error", err, "retry_in", backoff)
+
+			select {
+			case <-time.After(backoff):
+			case <-ctx.Done():
+				return
+			}
+
+			// Exponential backoff
+			backoff *= 2
+			if backoff > 30*time.Second {
+				backoff = 30 * time.Second
+			}
+			continue
+		}
+
+		// Reset backoff on success
+		backoff = time.Second
+		c.logger.Info("WebRTC connected successfully")
+
+		// Wait until closed or context cancelled
+		for c.webrtc.IsConnected() {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Second):
+				// Check connection periodically
+			}
+		}
+
+		c.logger.Warn("WebRTC connection lost, reconnecting...")
+	}
 }
 
 // Stop stops capturing frames
@@ -123,106 +192,10 @@ func (c *Client) Stop() {
 	if c.cancel != nil {
 		c.cancel()
 	}
+	if c.webrtc != nil {
+		c.webrtc.Close()
+	}
 	c.logger.Info("camera client stopped")
-}
-
-// captureLoop continuously fetches frames
-func (c *Client) captureLoop(ctx context.Context) {
-	interval := time.Duration(1000/c.cfg.Framerate) * time.Millisecond
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			frame, err := c.captureFrame(ctx)
-			if err != nil {
-				c.frameErrors.Add(1)
-				c.logger.Debug("frame capture error", "error", err)
-				continue
-			}
-
-			c.framesCaptures.Add(1)
-
-			c.mu.Lock()
-			c.lastFrame = frame
-			callback := c.onFrame
-			c.mu.Unlock()
-
-			if callback != nil {
-				callback(*frame)
-			}
-		}
-	}
-}
-
-// captureFrame fetches a single frame from Pollen
-func (c *Client) captureFrame(ctx context.Context) (*Frame, error) {
-	// Try MJPEG snapshot endpoint first
-	url := fmt.Sprintf("%s/api/video/snapshot", c.cfg.PollenURL)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("http request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
-	}
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read body: %w", err)
-	}
-
-	// Decode to get dimensions
-	img, err := jpeg.Decode(bytes.NewReader(data))
-	if err != nil {
-		// Try returning raw data if it's already JPEG
-		return &Frame{
-			Data:      data,
-			Width:     c.cfg.Width,
-			Height:    c.cfg.Height,
-			Timestamp: time.Now(),
-			FrameID:   c.frameID.Add(1),
-		}, nil
-	}
-
-	bounds := img.Bounds()
-
-	// Re-encode if quality adjustment needed
-	if c.cfg.Quality > 0 && c.cfg.Quality < 100 {
-		data, err = c.reencodeJPEG(img, c.cfg.Quality)
-		if err != nil {
-			return nil, fmt.Errorf("reencode: %w", err)
-		}
-	}
-
-	return &Frame{
-		Data:      data,
-		Width:     bounds.Dx(),
-		Height:    bounds.Dy(),
-		Timestamp: time.Now(),
-		FrameID:   c.frameID.Add(1),
-	}, nil
-}
-
-// reencodeJPEG re-encodes an image with the specified quality
-func (c *Client) reencodeJPEG(img image.Image, quality int) ([]byte, error) {
-	var buf bytes.Buffer
-	err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: quality})
-	if err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
 }
 
 // GetLastFrame returns the most recently captured frame
@@ -234,10 +207,20 @@ func (c *Client) GetLastFrame() *Frame {
 
 // Stats returns capture statistics
 func (c *Client) Stats() CameraStats {
+	c.mu.RLock()
+	running := c.running
+	c.mu.RUnlock()
+
+	connected := false
+	if c.webrtc != nil {
+		connected = c.webrtc.IsConnected()
+	}
+
 	return CameraStats{
-		FramesCaptured: c.framesCaptures.Load(),
+		FramesCaptured: c.framesCaptured.Load(),
 		FrameErrors:    c.frameErrors.Load(),
-		Running:        c.running,
+		Running:        running,
+		Connected:      connected,
 	}
 }
 
@@ -246,5 +229,5 @@ type CameraStats struct {
 	FramesCaptured uint64 `json:"frames_captured"`
 	FrameErrors    uint64 `json:"frame_errors"`
 	Running        bool   `json:"running"`
+	Connected      bool   `json:"connected"`
 }
-

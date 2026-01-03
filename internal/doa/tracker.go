@@ -46,6 +46,10 @@ type Result struct {
 	SmoothedAngle   float64 `json:"smoothed_angle"`
 	Confidence      float64 `json:"confidence"`
 	SpeakingLatched bool    `json:"speaking_latched"`
+
+	// Estimated position (from energy-based distance + angle)
+	EstX float64 `json:"est_x"` // Forward distance (meters)
+	EstY float64 `json:"est_y"` // Lateral position (meters, + = left)
 }
 
 // Tracker smooths and processes DOA readings
@@ -155,11 +159,17 @@ func (t *Tracker) poll(ctx context.Context) error {
 	// Calculate confidence
 	confidence := t.calculateConfidence(speakingLatched, smoothedAngle)
 
+	// Calculate estimated position from energy-based distance
+	estX := reading.EstimatedX()
+	estY := reading.EstimatedY()
+
 	result := Result{
 		Reading:         reading,
 		SmoothedAngle:   smoothedAngle,
 		Confidence:      confidence,
 		SpeakingLatched: speakingLatched,
+		EstX:            estX,
+		EstY:            estY,
 	}
 
 	t.latest = result
@@ -174,6 +184,9 @@ func (t *Tracker) poll(ctx context.Context) error {
 			"speaking", speakingLatched,
 			"confidence", confidence,
 			"latency_ms", latencyMs,
+			"total_energy", reading.TotalEnergy,
+			"est_x", estX,
+			"est_y", estY,
 		)
 	}
 

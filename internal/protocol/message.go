@@ -104,9 +104,15 @@ type DOAData struct {
 	Speaking        bool    `json:"speaking"`
 	SpeakingLatched bool    `json:"speaking_latched"`
 	Confidence      float64 `json:"confidence"`
+
+	// Enhanced 3D positioning data (from XVF3800 speech energy)
+	EstX        float64    `json:"est_x,omitempty"`        // Estimated forward distance (meters)
+	EstY        float64    `json:"est_y,omitempty"`        // Estimated lateral position (meters, + = left)
+	TotalEnergy float64    `json:"total_energy,omitempty"` // Total speech energy (higher = closer)
+	MicEnergy   [4]float64 `json:"mic_energy,omitempty"`   // Per-mic speech energy
 }
 
-// NewDOAMessage creates a DOA message
+// NewDOAMessage creates a DOA message (legacy, for backwards compatibility)
 func NewDOAMessage(angle, smoothedAngle float64, speaking, speakingLatched bool, confidence float64) (*Message, error) {
 	return NewMessage(TypeDOA, DOAData{
 		Angle:           angle,
@@ -114,6 +120,22 @@ func NewDOAMessage(angle, smoothedAngle float64, speaking, speakingLatched bool,
 		Speaking:        speaking,
 		SpeakingLatched: speakingLatched,
 		Confidence:      confidence,
+	})
+}
+
+// NewEnhancedDOAMessage creates a DOA message with enhanced 3D positioning data
+func NewEnhancedDOAMessage(angle, smoothedAngle float64, speaking, speakingLatched bool, confidence float64,
+	estX, estY, totalEnergy float64, micEnergy [4]float64) (*Message, error) {
+	return NewMessage(TypeDOA, DOAData{
+		Angle:           angle,
+		SmoothedAngle:   smoothedAngle,
+		Speaking:        speaking,
+		SpeakingLatched: speakingLatched,
+		Confidence:      confidence,
+		EstX:            estX,
+		EstY:            estY,
+		TotalEnergy:     totalEnergy,
+		MicEnergy:       micEnergy,
 	})
 }
 

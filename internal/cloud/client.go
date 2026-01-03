@@ -327,6 +327,17 @@ func (c *Client) SendDOA(angle, smoothedAngle float64, speaking, speakingLatched
 	return c.SendMessage(msg)
 }
 
+// SendEnhancedDOA sends DOA data with 3D positioning estimates to cloud
+func (c *Client) SendEnhancedDOA(angle, smoothedAngle float64, speaking, speakingLatched bool, confidence float64,
+	estX, estY, totalEnergy float64, micEnergy [4]float64) error {
+	msg, err := protocol.NewEnhancedDOAMessage(angle, smoothedAngle, speaking, speakingLatched, confidence,
+		estX, estY, totalEnergy, micEnergy)
+	if err != nil {
+		return err
+	}
+	return c.SendMessage(msg)
+}
+
 // closeConnection closes the WebSocket connection
 func (c *Client) closeConnection() {
 	c.mu.Lock()
@@ -376,4 +387,3 @@ func (c *Client) GetStats() Stats {
 		Reconnects:       c.reconnects.Load(),
 	}
 }
-
