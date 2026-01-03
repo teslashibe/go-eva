@@ -29,8 +29,9 @@ func (r *Reading) EstimatedDistance() float64 {
 		return 0
 	}
 	// Calibrated reference energy at 1 meter (from calibration 2026-01-03)
-	// Measured ~10.8M energy at 0.5m, so k = 10.8M × 0.25 = 2.7M at 1m
-	const referenceEnergy = 2705442.0
+	// Multi-distance calibration: 0.5m, 1m, 2m, 3m with constant voice volume
+	// Using median k value for robustness against outliers
+	const referenceEnergy = 6267144.0
 
 	// Inverse square law: distance = sqrt(refEnergy / measuredEnergy)
 	distance := math.Sqrt(referenceEnergy / r.TotalEnergy)
