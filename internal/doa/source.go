@@ -23,17 +23,26 @@ type Reading struct {
 
 // EstimatedDistance returns a rough distance estimate based on speech energy.
 // Higher energy = closer. Returns 0 if no speech detected.
-// This is a rough heuristic - calibration may be needed for accuracy.
+// Calibrated using real-world measurements with XVF3800.
 func (r *Reading) EstimatedDistance() float64 {
 	if r.TotalEnergy <= 0 || !r.Speaking {
 		return 0
 	}
-	// Rough inverse-square law approximation
-	// Calibration: assume energy of 1.0 = 1 meter, energy of 0.25 = 2 meters
-	// distance ∝ 1/√energy
-	// Scale factor determined empirically
-	const scaleFactor = 0.5
-	return scaleFactor / math.Sqrt(r.TotalEnergy)
+	// Calibrated reference energy at 1 meter (from calibration 2026-01-03)
+	// Measured ~10.8M energy at 0.5m, so k = 10.8M × 0.25 = 2.7M at 1m
+	const referenceEnergy = 2705442.0
+
+	// Inverse square law: distance = sqrt(refEnergy / measuredEnergy)
+	distance := math.Sqrt(referenceEnergy / r.TotalEnergy)
+
+	// Clamp to reasonable range (0.3m - 5m)
+	if distance < 0.3 {
+		distance = 0.3
+	}
+	if distance > 5.0 {
+		distance = 5.0
+	}
+	return distance
 }
 
 // EstimatedY returns the lateral (left/right) position estimate in meters.
