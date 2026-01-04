@@ -254,3 +254,4 @@ func (c *Client) IsHealthy(ctx context.Context) bool {
 	_, err := c.GetStatus(ctx)
 	return err == nil
 }
+

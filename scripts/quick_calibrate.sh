@@ -62,3 +62,4 @@ else
     echo "❌ No valid samples! Make sure you're speaking loud enough."
 fi
 
+
